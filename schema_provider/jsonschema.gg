@@ -1,0 +1,53 @@
+%%inline
+from schema_provider.ts import *
+%%
+
+
+list[p] : p         { [$1] }
+        | list[p] p { $1.append($2); $1 }
+        ;
+
+seplist[sep, p] : p                { [$1] }
+                | seplist[sep, p] sep p { $1.append($3); $1 }
+                ;
+
+START : <BOF> list[schema] <EOF> { $2 } ;
+
+schema : '\schema' <ident> '=' shape { JType($2.value, [], $4) }
+       | '\schema' <ident> '[' seplist[',', <ident>] ']' '=' shape { JType($2.value, $4, $7) }
+       ;
+
+shape : '{' kvpairs '}'             { $2 }
+      | '{'  '}'                    { JDict([], None) }
+      | '[' starredshapes ']'       { $2 }
+      | '[' ']'                     { JList([], None) }
+      | type                        { $1 }
+      ;
+
+name : name '.' <ident>  { dotname($1, $3.value) }
+     | <ident>           { $1.value }
+     ;
+
+
+type         : type '|' nonuniontype { JUnion($1, $3) }
+             | nonuniontype          { $1 }
+             ;
+
+nonuniontype : name '[' seplist[',', type] ']' { JGeneric($1, $3) }
+             | name                            { JNamed($1) }
+             | <int>                           { JInt($1.value) }
+             | <str>                           { JStr($1.value) }
+             | <float>                         { JFloat($1.value) }
+             ;
+
+field  :  type ':' shape                 { JField($1, $3) } ;
+
+kvpairs: seplist[',', field]                  { JDict($1, None) }
+       | seplist[',', field] ',' '**' shape   { JDict($1, $4) }
+       | '**' shape                      { JDict([], $2) }
+       ;
+
+starredshapes : seplist[',', shape] ',' '*' shape  { JList($1, $4) }
+              | seplist[',', shape]               { JList($1, None) }
+              | '*' shape                 { JList([], $2)  }
+              ;
